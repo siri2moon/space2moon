@@ -205,3 +205,157 @@ struct ReclaimOverlay: View {
         }
     }
 }
+
+/// The spell while files are leaving: motes of junk spiral up from the
+/// mage's circle into the moon, with the real progress underneath.
+struct BanishingOverlay: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var start = Date.now
+    @State private var appeared = false
+
+    var body: some View {
+        let progress = model.progress
+        GeometryReader { proxy in
+            let size = proxy.size
+            let moon = CGPoint(x: size.width / 2, y: size.height * 0.2)
+            let circle = CGPoint(x: size.width / 2, y: size.height * 0.62)
+
+            ZStack {
+                Arcana.night.opacity(0.8).ignoresSafeArea()
+                RadialGradient(colors: [Arcana.violet.opacity(0.28), .clear],
+                               center: .init(x: 0.5, y: 0.2), startRadius: 10, endRadius: 420)
+
+                TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { timeline in
+                    let t = timeline.date.timeIntervalSince(start)
+                    Canvas { ctx, _ in
+                        drawRunes(in: &ctx, at: circle, t: t)
+                        drawMotes(in: &ctx, from: circle, to: moon, t: t)
+                        drawMoon(in: &ctx, at: moon, t: t, fill: progress.fraction)
+                    }
+                }
+
+                FloatingMage(size: 150)
+                    .position(x: circle.x, y: circle.y - 70)
+                    .scaleEffect(appeared ? 1 : 0.85)
+
+                VStack(spacing: 10) {
+                    Text("Sending your junk to the moon…")
+                        .font(.spell(22, .bold))
+                        .foregroundStyle(Arcana.ink)
+                    Text(progress.current.isEmpty ? " " : progress.current)
+                        .font(.lore(13.5))
+                        .foregroundStyle(Arcana.mist)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 380)
+                        .contentTransition(.opacity)
+                    SpellProgress(fraction: progress.fraction)
+                        .frame(width: 300, height: 6)
+                        .padding(.top, 4)
+                    HStack(spacing: 6) {
+                        Text("\(progress.done) of \(progress.total)")
+                        Text("·")
+                        Text(progress.bytes.bytesText)
+                    }
+                    .font(.spell(13, .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Arcana.faint)
+                    .contentTransition(.numericText())
+                }
+                .position(x: size.width / 2, y: circle.y + 110)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 12)
+            }
+        }
+        .onAppear {
+            start = .now
+            withAnimation(.spring(duration: 0.6, bounce: 0.25)) { appeared = true }
+        }
+    }
+
+    /// A rotating double ring of runes under the mage, seen at an angle.
+    private func drawRunes(in ctx: inout GraphicsContext, at c: CGPoint, t: Double) {
+        let pulse = 0.75 + 0.25 * sin(t * 3)
+        for (radius, speed, dash) in [(120.0, 0.5, 14.0), (92.0, -0.8, 6.0)] {
+            var ring = ctx
+            ring.translateBy(x: c.x, y: c.y)
+            ring.scaleBy(x: 1, y: 0.32)
+            ring.rotate(by: .radians(t * speed))
+            let path = Path(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
+            ring.stroke(path, with: .color(Arcana.cyan.opacity(0.55 * pulse)),
+                        style: StrokeStyle(lineWidth: 2, dash: [dash, dash * 0.7]))
+        }
+        var glow = ctx
+        glow.addFilter(.blur(radius: 22))
+        glow.fill(Path(ellipseIn: CGRect(x: c.x - 130, y: c.y - 36, width: 260, height: 72)),
+                  with: .color(Arcana.violet.opacity(0.45 * pulse)))
+    }
+
+    /// Bits of junk rising in loose spirals and shrinking into the moon.
+    private func drawMotes(in ctx: inout GraphicsContext, from a: CGPoint, to b: CGPoint, t: Double) {
+        let colors = [Arcana.cyan, Arcana.violet, Arcana.gold]
+        for i in 0..<46 {
+            let seed = Double(i) * 0.618_034
+            let speed = 0.32 + (seed.truncatingRemainder(dividingBy: 1)) * 0.22
+            let p = (t * speed + seed).truncatingRemainder(dividingBy: 1)
+            let eased = p * p * (3 - 2 * p)
+            let spread = 120 * (1 - eased)
+            let angle = seed * 9 + p * 7
+            let x = a.x + (b.x - a.x) * eased + cos(angle) * spread
+            let y = a.y + (b.y - a.y) * eased + sin(angle) * spread * 0.3
+            let r = (1 - eased) * (i % 3 == 0 ? 6 : 4) + 1.5
+            let alpha = min(1, p * 6) * (1 - pow(p, 6))
+            let color = colors[i % colors.count]
+
+            var halo = ctx
+            halo.addFilter(.blur(radius: 6))
+            halo.fill(Path(ellipseIn: CGRect(x: x - r * 2, y: y - r * 2, width: r * 4, height: r * 4)),
+                      with: .color(color.opacity(0.5 * alpha)))
+            let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+            let shape = i % 4 == 0
+                ? Path(roundedRect: rect, cornerRadius: r * 0.35)
+                : Path(ellipseIn: rect)
+            ctx.fill(shape, with: .color(color.opacity(alpha)))
+        }
+    }
+
+    /// The moon swallows the junk and glows brighter as the work gets done.
+    private func drawMoon(in ctx: inout GraphicsContext, at c: CGPoint, t: Double, fill: Double) {
+        let r = 44.0
+        let pulse = 0.85 + 0.15 * sin(t * 4.2)
+        var glow = ctx
+        glow.addFilter(.blur(radius: 30))
+        let g = r * (1.5 + 0.5 * fill) * pulse
+        glow.fill(Path(ellipseIn: CGRect(x: c.x - g, y: c.y - g, width: g * 2, height: g * 2)),
+                  with: .color(Arcana.cyan.opacity(0.35 + 0.3 * fill)))
+        let disc = Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+        ctx.fill(disc, with: .radialGradient(
+            Gradient(colors: [.white, Color(red: 0.86, green: 0.88, blue: 1)]),
+            center: CGPoint(x: c.x - r * 0.3, y: c.y - r * 0.3), startRadius: 2, endRadius: r * 1.4))
+        // A few soft craters.
+        for (dx, dy, cr) in [(0.3, -0.2, 0.18), (-0.25, 0.3, 0.13), (0.1, 0.45, 0.09)] {
+            let rect = CGRect(x: c.x + dx * r - cr * r, y: c.y + dy * r - cr * r, width: cr * r * 2, height: cr * r * 2)
+            ctx.fill(Path(ellipseIn: rect), with: .color(Color(red: 0.72, green: 0.74, blue: 0.9).opacity(0.55)))
+        }
+    }
+}
+
+/// A progress bar with light running through the filled part.
+struct SpellProgress: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.08))
+                Capsule()
+                    .fill(LinearGradient(colors: [Arcana.violet, Arcana.cyan], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(proxy.size.height, w * fraction))
+                    .overlay { ShimmerBar().opacity(0.6).clipShape(Capsule()) }
+                    .shadow(color: Arcana.cyan.opacity(0.7), radius: 8)
+            }
+        }
+    }
+}

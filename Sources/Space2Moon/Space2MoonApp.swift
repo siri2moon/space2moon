@@ -69,6 +69,12 @@ struct RootView: View {
             }
             .ignoresSafeArea(edges: .top)
 
+            if model.banishing {
+                BanishingOverlay()
+                    .transition(.opacity)
+                    .zIndex(5)
+            }
+
             if let report = model.lastReport {
                 ReclaimOverlay(report: report)
                     .transition(.opacity)
@@ -97,6 +103,12 @@ struct RootView: View {
                     try? await Task.sleep(for: .seconds(1.5))
                     DevSnapshot.capture(suffix: "detail")
                 }
+                // The banishing spell, shown with made-up progress; nothing is removed.
+                model.progress = BanishProgress(total: 36, done: 14, bytes: 812_000_000, current: "CaoBong-31-Ai-Cau-Ca.mp4")
+                withAnimation { model.banishing = true }
+                try? await Task.sleep(for: .seconds(1.8))
+                DevSnapshot.capture(suffix: "banishing")
+                withAnimation { model.banishing = false }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

@@ -253,6 +253,8 @@ struct AuthorMark: View {
                 .foregroundStyle(hovering ? Arcana.cyan : Arcana.gold)
                 .shadow(color: (hovering ? Arcana.cyan : Arcana.gold).opacity(0.5), radius: hovering ? 6 : 2)
             }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
             .onHover { hovering = $0 }
             .help("siri2moon.com")
             Rectangle().fill(Arcana.gold.opacity(0.3)).frame(width: 18, height: 0.5)

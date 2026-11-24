@@ -16,6 +16,7 @@ final class AppModel {
     /// What the next banishing removes: one category, or everything chosen when nil.
     var scope: CategoryID?
     var banishing = false
+    var progress = BanishProgress()
     var lastReport: CleanReport?
     var ritualRunning: CategoryID?
     var ritualMessage: String?
@@ -159,14 +160,33 @@ final class AppModel {
     func banish() async {
         let items = banishList
         guard !items.isEmpty else { return }
-        banishing = true
-        let report = await Cleaner.banish(items)
+        let started = ContinuousClock.now
+        progress = BanishProgress(total: items.count)
+        withAnimation(.easeOut(duration: 0.4)) { banishing = true }
+
+        // One item at a time off the main actor, so the spell can show each one leaving.
+        var report = CleanReport()
+        for item in items {
+            progress.current = item.name
+            report.merge(await Cleaner.banish([item]))
+            withAnimation(.smooth(duration: 0.25)) {
+                progress.done += 1
+                progress.bytes = report.deleted + report.trashed
+            }
+        }
+        // Let the spell play long enough to be seen, even for a single file.
+        let minimum = Duration.seconds(2.4)
+        let elapsed = ContinuousClock.now - started
+        if elapsed < minimum { try? await Task.sleep(for: minimum - elapsed) }
+
         let touched = Set(items.compactMap { item in
             results.first { $0.value.items.contains(item) }?.key
         })
         selection.subtract(items.map(\.url))
-        banishing = false
-        withAnimation(.spring(duration: 0.5)) { lastReport = report }
+        withAnimation(.easeInOut(duration: 0.45)) {
+            banishing = false
+            lastReport = report
+        }
         await scan(Array(touched.union([.trash])))
     }
 
@@ -210,4 +230,14 @@ final class AppModel {
         guard item.url.isFileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([item.url])
     }
+}
+
+/// How far the current banishing has got.
+struct BanishProgress {
+    var total = 0
+    var done = 0
+    var bytes: Int64 = 0
+    var current = ""
+
+    var fraction: Double { total == 0 ? 0 : Double(done) / Double(total) }
 }

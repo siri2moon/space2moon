@@ -38,6 +38,17 @@ public struct CleanReport: Sendable {
     public var trashedCount = 0
     public var failures: [Failure] = []
 
+    public init() {}
+
+    /// Adds another report's numbers to this one.
+    public mutating func merge(_ other: CleanReport) {
+        deleted += other.deleted
+        trashed += other.trashed
+        deletedCount += other.deletedCount
+        trashedCount += other.trashedCount
+        failures += other.failures
+    }
+
     public struct Failure: Sendable, Identifiable {
         public let id = UUID()
         public let name: String
