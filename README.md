@@ -6,6 +6,11 @@
 
 A free, open-source (MIT) disk cleaner for macOS with a little magic in it.
 
+[![Latest release](https://img.shields.io/github/v/release/siri2moon/space2moon?color=8b5cf6)](https://github.com/siri2moon/space2moon/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/siri2moon/space2moon/total?color=5eead4)](https://github.com/siri2moon/space2moon/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-e9c46a)](LICENSE)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-555?logo=apple)
+
 [Download the latest release](https://github.com/siri2moon/space2moon/releases/latest) · Crafted by [siri2moon](https://siri2moon.com)
 
 <img src="docs/screenshot.png" alt="Space2Moon main window: the magic circle gauge, why your disk is full, and the grimoire of categories" width="900" />
