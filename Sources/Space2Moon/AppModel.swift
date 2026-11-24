@@ -13,6 +13,8 @@ final class AppModel {
     var baseline: ScanSnapshot?
     var hasFullDiskAccess = true
     var confirming = false
+    /// What the next banishing removes: one category, or everything chosen when nil.
+    var scope: CategoryID?
     var banishing = false
     var lastReport: CleanReport?
     var ritualRunning: CategoryID?
@@ -58,8 +60,30 @@ final class AppModel {
 
     var chosenBytes: Int64 { chosen.reduce(0) { $0 + $1.size } }
 
+    /// Chosen items inside one category.
+    func chosen(in id: CategoryID) -> [DiskItem] {
+        (results[id]?.items ?? []).filter { $0.method != .none && selection.contains($0.url) }
+    }
+
+    /// Chosen items grouped by category, largest first.
+    var chosenByCategory: [(id: CategoryID, items: [DiskItem])] {
+        CategoryID.allCases
+            .map { (id: $0, items: chosen(in: $0)) }
+            .filter { !$0.items.isEmpty }
+            .sorted { $0.items.reduce(0) { $0 + $1.size } > $1.items.reduce(0) { $0 + $1.size } }
+    }
+
+    /// What the confirmation sheet shows and `banish()` removes.
+    var banishList: [DiskItem] { scope.map(chosen(in:)) ?? chosen }
+
+    /// Opens the confirmation for one category, or for everything chosen.
+    func confirmBanish(_ scope: CategoryID?) {
+        self.scope = scope
+        confirming = true
+    }
+
     func selectedBytes(in id: CategoryID) -> Int64 {
-        (results[id]?.items ?? []).filter { $0.method != .none && selection.contains($0.url) }.reduce(0) { $0 + $1.size }
+        chosen(in: id).reduce(0) { $0 + $1.size }
     }
 
     // MARK: - Scanning
@@ -133,7 +157,7 @@ final class AppModel {
     // MARK: - Banishing
 
     func banish() async {
-        let items = chosen
+        let items = banishList
         guard !items.isEmpty else { return }
         banishing = true
         let report = await Cleaner.banish(items)
@@ -149,7 +173,7 @@ final class AppModel {
     func emptyTrashAfterReport() async {
         lastReport = nil
         selectAll(.trash, true)
-        confirming = true
+        confirmBanish(.trash)
     }
 
     // MARK: - Rituals

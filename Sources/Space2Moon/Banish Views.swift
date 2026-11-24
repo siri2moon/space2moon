@@ -1,30 +1,53 @@
 import MageCore
 import SwiftUI
 
-/// Floating bar with the total chosen and the button that starts the cleaning.
+/// Floating bar with what is chosen and the button that starts the cleaning.
+/// Inside a category it banishes only that category, so items chosen
+/// elsewhere (caches are chosen by default) never leave by surprise.
 struct BanishBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let bytes = model.chosenBytes
-        if bytes > 0 || model.banishing {
+        let total = model.chosenBytes
+        let here = model.focused
+        let hereItems = here.map(model.chosen(in:)) ?? []
+        let hereBytes = hereItems.reduce(0) { $0 + $1.size }
+        let local = here != nil && !hereItems.isEmpty
+        let elsewhere = total - (local ? hereBytes : 0)
+
+        if total > 0 || model.banishing {
             HStack(spacing: 16) {
                 Image(systemName: "wand.and.stars")
                     .font(.lore(20))
                     .foregroundStyle(LinearGradient(colors: [Arcana.gold, Arcana.cyan], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(bytes.bytesText)
+                    Text((local ? hereBytes : total).bytesText)
                         .font(.spell(18, .bold))
                         .monospacedDigit()
                         .foregroundStyle(Arcana.ink)
                         .contentTransition(.numericText())
-                    Text("\(model.chosen.count) items ready to banish")
-                        .font(.lore(13))
-                        .foregroundStyle(Arcana.mist)
+                    Group {
+                        if local, let here {
+                            Text("\(hereItems.count) items in \(Grimoire.info(here).title)")
+                        } else if here != nil {
+                            Text("\(model.chosen.count) items chosen in other places")
+                        } else {
+                            Text("\(model.chosen.count) items ready to banish")
+                        }
+                    }
+                    .font(.lore(13))
+                    .foregroundStyle(Arcana.mist)
+                    .lineLimit(1)
                 }
-                Spacer(minLength: 20)
+                Spacer(minLength: 12)
+                if local, elsewhere > 0 {
+                    Button("All \(total.bytesText)") { model.confirmBanish(nil) }
+                        .buttonStyle(GlowButtonStyle(prominent: false))
+                        .disabled(model.banishing)
+                        .help("Banish everything chosen, in every category")
+                }
                 Button {
-                    model.confirming = true
+                    model.confirmBanish(local ? here : nil)
                 } label: {
                     HStack(spacing: 6) {
                         if model.banishing { ProgressView().controlSize(.small) }
@@ -39,7 +62,7 @@ struct BanishBar: View {
             .padding(.leading, 20)
             .padding(.trailing, 10)
             .padding(.vertical, 10)
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 620)
             .background(Capsule().fill(Arcana.night.opacity(0.85)))
             .background(Capsule().fill(.ultraThinMaterial))
             .overlay(Capsule().strokeBorder(
@@ -57,7 +80,9 @@ struct ConfirmBanish: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        let items = model.chosen
+        let items = model.banishList
+        let bytes = items.reduce(0) { $0 + $1.size }
+        let groups = model.scope == nil ? model.chosenByCategory : []
         let erased = items.filter { $0.method == .delete }
         let trashed = items.filter { $0.method == .trash }
 
@@ -66,7 +91,8 @@ struct ConfirmBanish: View {
                 Sigil(symbol: "wand.and.stars", color: Arcana.violet, size: 46)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Cast the banishing?").font(.spell(22, .bold)).foregroundStyle(Arcana.ink)
-                    Text(model.chosenBytes.bytesText + " will leave your disk")
+                    Text(model.scope.map { "\(bytes.bytesText) will leave \(Grimoire.info($0).title)" }
+                         ?? "\(bytes.bytesText) will leave your disk")
                         .font(.lore(14.5)).foregroundStyle(Arcana.mist)
                 }
             }
@@ -76,6 +102,20 @@ struct ConfirmBanish: View {
                 }
                 if !trashed.isEmpty {
                     row("trash", Arcana.gold, "Moved to the Trash", "Your files, restorable until the Trash is emptied", trashed)
+                }
+            }
+            if groups.count > 1 {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("FROM").font(.spell(11, .bold)).tracking(1.2).foregroundStyle(Arcana.faint)
+                    ForEach(groups, id: \.id) { group in
+                        HStack {
+                            Text(Grimoire.info(group.id).title)
+                            Spacer()
+                            Text(group.items.reduce(0) { $0 + $1.size }.bytesText).monospacedDigit()
+                        }
+                        .font(.lore(13.5))
+                        .foregroundStyle(Arcana.mist)
+                    }
                 }
             }
             Text("Quit browsers, Xcode and other heavy apps first so their caches can be removed cleanly.")
